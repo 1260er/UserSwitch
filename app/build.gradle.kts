@@ -18,4 +18,24 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("USERSWITCH_KEYSTORE_FILE")
+
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("USERSWITCH_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("USERSWITCH_KEY_ALIAS")
+                keyPassword = System.getenv("USERSWITCH_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
 }
