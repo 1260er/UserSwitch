@@ -9,11 +9,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
@@ -22,6 +24,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_BIND_WIDGET = 1001;
     private static final String PREFS = "widget_host";
     private static final String KEY_WIDGET_ID = "widget_id";
+
+    private static final int AUTO_CLICK_ATTEMPTS = 25;
+    private static final long AUTO_CLICK_DELAY_MS = 100L;
 
     private AppWidgetManager widgetManager;
     private AppWidgetHost widgetHost;
@@ -255,6 +260,49 @@ public class MainActivity extends Activity {
 
         widgetView.setLayoutParams(layoutParams);
         container.addView(widgetView);
+
+        scheduleAutomaticSwitchClick(widgetView, 0);
+    }
+
+    private void scheduleAutomaticSwitchClick(
+            AppWidgetHostView widgetView,
+            int attempt
+    ) {
+        widgetView.postDelayed(() -> {
+            List<View> clickableViews = new ArrayList<>();
+            collectClickableViews(widgetView, clickableViews);
+
+            if (clickableViews.size() == 1) {
+                View target = clickableViews.get(0);
+
+                if (target.performClick()) {
+                    widgetView.postDelayed(this::finish, 150L);
+                    return;
+                }
+            }
+
+            if (attempt + 1 < AUTO_CLICK_ATTEMPTS) {
+                scheduleAutomaticSwitchClick(widgetView, attempt + 1);
+            }
+        }, AUTO_CLICK_DELAY_MS);
+    }
+
+    private void collectClickableViews(View view, List<View> result) {
+        if (view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        if (view.hasOnClickListeners()) {
+            result.add(view);
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectClickableViews(group.getChildAt(i), result);
+            }
+        }
     }
 
     private void showMessage(String message) {
