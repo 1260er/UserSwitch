@@ -25,19 +25,24 @@ public class MainActivity extends Activity {
     private static final String PREFS = "widget_host";
     private static final String KEY_WIDGET_ID = "widget_id";
 
-    private static final int AUTO_CLICK_ATTEMPTS = 25;
-    private static final long AUTO_CLICK_DELAY_MS = 100L;
+    private static final int AUTO_CLICK_ATTEMPTS = 32;
+    private static final long AUTO_CLICK_DELAY_MS = 16L;
+    private static final int START_LISTENING_ATTEMPT = 4;
 
     private AppWidgetManager widgetManager;
     private AppWidgetHost widgetHost;
     private FrameLayout container;
     private int pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
+    private boolean widgetHostListening = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setFinishOnTouchOutside(true);
+
+        // Unsichtbare Brücke: Der Nutzer soll nur den System-User-Switcher sehen.
+        getWindow().getDecorView().setAlpha(0f);
 
         widgetManager = AppWidgetManager.getInstance(this);
         widgetHost = new AppWidgetHost(this, HOST_ID);
@@ -55,8 +60,8 @@ public class MainActivity extends Activity {
         params.gravity = Gravity.CENTER;
         getWindow().setAttributes(params);
 
-        getWindow().setDimAmount(0.45f);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        getWindow().setDimAmount(0f);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
 
         AppWidgetProviderInfo provider = findMultiuserProvider();
 
@@ -89,14 +94,16 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
-        widgetHost.startListening();
-    }
-
-    @Override
     protected void onStop() {
-        widgetHost.stopListening();
+        if (widgetHostListening) {
+            try {
+                widgetHost.stopListening();
+            } catch (Exception ignored) {
+            }
+
+            widgetHostListening = false;
+        }
+
         super.onStop();
     }
 
@@ -242,11 +249,6 @@ public class MainActivity extends Activity {
     ) {
         container.removeAllViews();
 
-        widgetManager.updateAppWidgetOptions(
-                widgetId,
-                createWidgetOptions()
-        );
-
         AppWidgetHostView widgetView =
                 widgetHost.createView(this, widgetId, info);
 
@@ -268,23 +270,35 @@ public class MainActivity extends Activity {
             AppWidgetHostView widgetView,
             int attempt
     ) {
-        widgetView.postDelayed(() -> {
-            List<View> clickableViews = new ArrayList<>();
-            collectClickableViews(widgetView, clickableViews);
+        List<View> clickableViews = new ArrayList<>();
+        collectClickableViews(widgetView, clickableViews);
 
-            if (clickableViews.size() == 1) {
-                View target = clickableViews.get(0);
+        if (clickableViews.size() == 1) {
+            View target = clickableViews.get(0);
 
-                if (target.performClick()) {
-                    widgetView.postDelayed(this::finish, 150L);
-                    return;
-                }
+            if (target.performClick()) {
+                finish();
+                return;
             }
+        }
 
-            if (attempt + 1 < AUTO_CLICK_ATTEMPTS) {
-                scheduleAutomaticSwitchClick(widgetView, attempt + 1);
-            }
-        }, AUTO_CLICK_DELAY_MS);
+        // Im Normalfall ist createView() bereits vollständig befüllt.
+        // Nur wenn das nicht reicht, Updates des Hosts abonnieren.
+        if (attempt == START_LISTENING_ATTEMPT) {
+            startWidgetListeningIfNeeded();
+        }
+
+        if (attempt + 1 < AUTO_CLICK_ATTEMPTS) {
+            widgetView.postDelayed(
+                    () -> scheduleAutomaticSwitchClick(
+                            widgetView,
+                            attempt + 1
+                    ),
+                    AUTO_CLICK_DELAY_MS
+            );
+        } else {
+            revealFallbackWidget();
+        }
     }
 
     private void collectClickableViews(View view, List<View> result) {
@@ -305,7 +319,29 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void startWidgetListeningIfNeeded() {
+        if (widgetHostListening) {
+            return;
+        }
+
+        try {
+            widgetHost.startListening();
+            widgetHostListening = true;
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void revealFallbackWidget() {
+        getWindow()
+                .getDecorView()
+                .animate()
+                .alpha(1f)
+                .setDuration(80L)
+                .start();
+    }
+
     private void showMessage(String message) {
+        getWindow().getDecorView().setAlpha(1f);
         container.removeAllViews();
 
         TextView text = new TextView(this);
