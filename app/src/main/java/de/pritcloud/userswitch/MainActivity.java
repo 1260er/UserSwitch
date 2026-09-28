@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
 
     private static final int AUTO_CLICK_ATTEMPTS = 32;
     private static final long AUTO_CLICK_DELAY_MS = 16L;
-    private static final int START_LISTENING_ATTEMPT = 4;
+    private static final int START_LISTENING_ATTEMPT = 0;
 
     private AppWidgetManager widgetManager;
     private AppWidgetHost widgetHost;
@@ -63,13 +63,7 @@ public class MainActivity extends Activity {
         getWindow().setDimAmount(0f);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
 
-        AppWidgetProviderInfo provider = findMultiuserProvider();
-
-        if (provider == null) {
-            showMessage("GrapheneOS-Multiuser-Widget nicht gefunden.");
-            return;
-        }
-
+        // Fast path: Die bereits gebundene Widget-ID zuerst verwenden.
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         int savedId = prefs.getInt(
                 KEY_WIDGET_ID,
@@ -81,13 +75,27 @@ public class MainActivity extends Activity {
                     widgetManager.getAppWidgetInfo(savedId);
 
             if (savedInfo != null
-                    && savedInfo.provider.equals(provider.provider)) {
+                    && savedInfo.provider != null
+                    && "com.android.multiuser".equals(
+                            savedInfo.provider.getPackageName()
+                    )
+                    && savedInfo.provider.getClassName().endsWith(
+                            ".MultiuserWidgetReceiver"
+                    )) {
                 showWidget(savedId, savedInfo);
                 return;
             }
 
             widgetHost.deleteAppWidgetId(savedId);
             prefs.edit().remove(KEY_WIDGET_ID).apply();
+        }
+
+        // Provider-Scan nur bei erster Einrichtung oder ungültiger Bindung.
+        AppWidgetProviderInfo provider = findMultiuserProvider();
+
+        if (provider == null) {
+            showMessage("GrapheneOS-Multiuser-Widget nicht gefunden.");
+            return;
         }
 
         requestWidgetBinding(provider);
@@ -282,8 +290,9 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Im Normalfall ist createView() bereits vollständig befüllt.
-        // Nur wenn das nicht reicht, Updates des Hosts abonnieren.
+        // Nach einem Neustart kann createView() noch keine aktuellen
+        // RemoteViews besitzen. Dann Updates sofort abonnieren, ohne
+        // vorher mehrere Retries abzuwarten.
         if (attempt == START_LISTENING_ATTEMPT) {
             startWidgetListeningIfNeeded();
         }

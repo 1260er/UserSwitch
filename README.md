@@ -60,4 +60,4 @@ Everything happens locally on the device.
 
 ## Releases
 
-Current stable release: **v1.0.0**
+Current stable release: **v1.0.1**

@@ -60,4 +60,4 @@ Alle Funktionen werden ausschließlich lokal auf dem Gerät ausgeführt.
 
 ## Releases
 
-Aktuelle stabile Version: **v1.0.0**
+Aktuelle stabile Version: **v1.0.1**
